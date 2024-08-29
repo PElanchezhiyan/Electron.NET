@@ -1,4 +1,5 @@
-﻿const { app } = require('electron');
+const { app } = require('electron');
+const net = require('net');
 const { BrowserWindow } = require('electron');
 const { protocol } = require('electron');
 const path = require('path');
@@ -92,9 +93,14 @@ app.on('ready', () => {
     defaultElectronPort = manifestJsonFile.electronPort;
   }
   // hostname needs to be localhost, otherwise Windows Firewall will be triggered.
-  portscanner.findAPortNotInUse(defaultElectronPort, 65535, 'localhost', function (error, port) {
-    console.log('Electron Socket IO Port: ' + port);
-    startSocketApiBridge(port);
+  
+  findAvailablePort(8000, 65535, (error, availablePort) => {
+    if (error) {
+      console.error('Error finding available port:', error);
+      return;
+    }
+    console.log('Available port:', availablePort);
+    startSocketApiBridge(availablePort);
   });
 });
 
@@ -102,6 +108,29 @@ app.on('quit', async (event, exitCode) => {
   await server.close();
   apiProcess.kill();
 });
+function findAvailablePort(startPort, endPort, callback) {
+  let port = startPort;
+  
+  function checkPort() {
+    const server = net.createServer();
+    server.listen(port, 'localhost');
+    
+    server.once('listening', () => {
+      server.close(() => callback(null, port));
+    });
+    
+    server.once('error', () => {
+      port++;
+      if (port <= endPort) {
+        checkPort();
+      } else {
+        callback(new Error('No available ports'));
+      }
+    });
+  }
+
+  checkPort();
+}
 
 function isSplashScreenEnabled() {
   if (manifestJsonFile.hasOwnProperty('splashscreen')) {
